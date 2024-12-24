@@ -19,19 +19,31 @@ Start:
 		move.w	d0,$dff088
 
 		bsr	CopperSetSprite0
-		move.w	#$f00,$dff1a2
-		move.w	#$0f0,$dff1a4
-		move.w	#$00f,$dff1a6
-
+		bsr	WaitFire
 Mainloop:
 		bsr	VBlank
 		move.b	#$0,Players
 
-		moveq	#16,d0		;pozycja x
-		moveq	#16,d1		;pozycja y
-		moveq	#16,d2		;wysokość sprajta
+		bsr	FizykaPilki
+
+		moveq	#0,d0		;pozycja x
+		move.l	d0,d1
+		move.w	Player1+2,d1	;pozycja y
+		moveq	#32,d2		;wysokosc sprajta
 		lea	Paletka,a0
 		bsr	SpriteSet
+
+		move.l	#300,d0
+		move.w	Player2+2,d1
+		moveq	#32,d2
+		lea	Paletka2,a0
+		bsr	SpriteSet
+
+		move.w	Ball,d0
+		move.w	Ball+2,d1
+		moveq	#16,d2
+		lea	Pilka,a0
+		bsr 	SpriteSet
 
 		bsr	Keyboard
 		bsr	Joystick
@@ -85,32 +97,159 @@ Joydown:	bset	#1,Players
 ;--------------------------------------------------------------
 
 Controls:	btst	#0,Players
-		bne	Red
+		beq	.Green
+		cmp.w	#183,Player2+2
+		bge	.Green
+		addq.w	#3,Player2+2
+
+.Green:
 		btst	#1,Players
-		bne	Green
+		beq	.Yellow
+		cmp.w	#33,Player2+2
+		ble	.Yellow
+		subq.w	#3,Player2+2
+
+.Yellow:		
 		btst	#2,Players
-		bne	Yellow
+		beq	.Purple
+		cmp.w	#33,Player1+2
+		ble	.Purple
+		subq.w	#3,Player1+2
+
+.Purple:
 		btst	#3,Players
-		bne	Purple
-		rts
-Red:		move.w	#$f00,$dff180
-		rts
-Green:		move.w	#$f0,$dff180
-		rts
-Yellow:		move.w	#$ff0,$dff180
-		rts
-Purple:		move.w	#$f0f,$dff180
+		beq	.No
+		cmp.w	#183,Player1+2
+		bge	.No
+		addq.w	#3,Player1+2
+.No
 		rts
 
 ;--------------------------------------------------------------
 
-Punktacja:	move.w	Player1,d0
+FizykaPilki:
+		move.w	BallSpeed,d0
+		move.w	BallSpeed+2,d1
+		add.w	d0,Ball
+		add.w	d1,Ball+2
+
+.LewaGranica:
+		cmp.w	#-16,Ball
+		bge	.PrawaGranica
+		add.w	#1,Player2
+		move.w	#140,Ball
+		move.w	#100,Ball+2
+		bsr	Punktacja
+		bsr	WaitFire
+.PrawaGranica	cmp.w	#320,Ball
+		ble	.GornaGranica
+		add.w	#1,Player1
+		move.w	#140,Ball
+		move.w	#100,Ball+2
+		bsr	Punktacja
+		bsr	WaitFire
+.GornaGranica
+		cmp.w	#33,Ball+2
+		bge	.DolnaGranica
+		neg.w	BallSpeed+2
+.DolnaGranica	
+		cmp.w	#198,Ball+2
+		ble	.Kolizje
+		neg.w	BallSpeed+2
+
+.Kolizje
+		move.w	Ball+2,d0	;D0 drugi word to Y pileczki
+		swap	d0
+		move.w	Ball,d0		;D0 pierwszy word to X pileczki
+		move.l	d0,d1		;D1 jako baza do dalszych obliczen
+		move.w	Player2+2,d2	;D2 drugi word to Y prawej paletki
+		swap	d2
+		move.w	Player1+2,d2	;D2 pierwszy word to Y lewej paletki
+		move.l	d2,d3		;D3 jako baza do dalszych obliczen
+
+.LewaGorna
+		cmp.w	#15,d0		;pozycja pozioma
+		bgt	.LewaDolna
+		swap	d0
+		
+		add.w	#15,d0
+		cmp.w	d0,d2
+		bgt	.LewaDolna
+
+		sub.w	#8,d0
+		add.w	#15,d2
+		cmp.w	d0,d2
+		blt	.LewaDolna
+		move.w	#2,BallSpeed
+		subq.w	#2,BallSpeed+2
+
+.LewaDolna
+		move.l	d1,d0
+		move.l	d3,d2
+		cmp.w	#15,d0
+		bgt	.PrawaGorna
+		swap	d0
+
+		add.w	#31,d2
+		cmp.w	d0,d2
+		blt	.PrawaGorna
+		sub.w	#15,d2
+		add.w	#8,d0
+		cmp.w	d0,d2
+		bgt	.PrawaGorna
+		move.w	#2,BallSpeed
+		addq.w	#2,BallSpeed+2
+
+.PrawaGorna
+
+		rts
+;--------------------------------------------------------------
+
+WaitFire:	moveq	#0,d0
+		move.b	$bfec01,d0
+		ror.b	#1,d0
+		eor.b	#$ff,d0
+
+.Esc		cmp.b	#$45,d0
+		bne	.Space
+ 		move.w	#$ffff,Players
+ 		rts
+.Space		cmp.b	#$40,d0
+		bne	.Fire
+		bra	.UstawKierunek
+.Fire		btst	#7,$bfe001
+ 		bne	WaitFire
+
+.UstawKierunek
+		cmp.w	#160,Ball
+		bge	.RuchWPrawo
+.RuchWLewo:	move.w	#-3,BallSpeed
+		rts
+.RuchWPrawo	move.w	#3,BallSpeed
+
+		rts
+		
+;--------------------------------------------------------------
+Punktacja:	
+		cmp.w	#9,Player1
+		bgt	.ResetujPunkty
+		cmp.w	#9,Player2
+		bgt	.ResetujPunkty
+		
+		move.w	Player1,d0
 		moveq	#14,d1
 		bsr	Punkty
 
 		move.w	Player2,d0
 		moveq	#24,d1
 		bsr	Punkty
+		rts
+
+.ResetujPunkty
+		move.w	#0,Player1
+		move.w	#0,Player2
+		move.w	#0,BallSpeed+2
+		bra	Punktacja
 		rts
 
 ;--------------------------------------------------------------
@@ -130,6 +269,8 @@ Init_Colors:	lea	Colors,a0
 Col_Nt:		move.w	(a0)+,2(a1)
 		adda.l	#4,a1
 		dbf	d7,Col_Nt
+		move.w	#$abc,$dff1a2 ; kolor 17
+		move.w	#$f00,$dff1aa ; kolor 21
 		rts
 
 ;--------------------------------------------------------------
@@ -171,7 +312,7 @@ BlitWait:	btst #14-8,$dff002
 
 SpritesSetFake:
 		moveq #8-1,d0
-		lea Sprite0,a0
+		lea Sprite00,a0
 		move.l #SpriteFake,d1
 
 .loop		swap d1
@@ -185,12 +326,27 @@ SpritesSetFake:
 ;--------------------------------------------------------------
 
 CopperSetSprite0:
-		lea	Sprite0,a0
+		lea	Sprite00,a0
 		move.l	#Paletka,d0
 
 		move.w	d0,4(a0)
 		swap	d0
 		move.w	d0,(a0)
+
+;Sprite1
+		lea	Sprite01,a0
+		move.l	#Paletka2,d0
+		move.w	d0,4(a0)
+		swap	d0
+		move.w	d0,(a0)
+
+;Sprite2
+ 		lea	Sprite02,a0
+ 		move.l	#Pilka,d0
+ 		move.w	d0,4(a0)
+ 		swap	d0
+ 		move.w	d0,(a0)
+
 		rts
 
 ;--------------------------------------------------------------
@@ -276,10 +432,10 @@ OsRestore:
 
 ;--------------------------------------------------------------
 Players:	dc.w $0,$0	; %0000 pl2d pl2u pl1d pl1u ($ffff - wyjscie)
-Player1:	dc.w $0,$0	; punkty , Y
-Player2:	dc.w $0,$0	; punkty , Y
-Ball:		dc.w $0,$0	; X , Y
-
+Player1:	dc.w $0,100-15	; punkty , Y
+Player2:	dc.w $0,$33	; punkty , Y
+Ball:		dc.w 140,100	; X , Y
+BallSpeed:	dc.w 0,0	; XS,YS
 ;--------------------------------------------------------------
 gfxName:	dc.b "graphics.library",0
 	EVEN
@@ -313,387 +469,115 @@ Planes:		dc.l $00e00000,$00e20000; adresy bitplanow
 		dc.l $1007fffe		; czekamy na 10 linie
 
 		dc.w	$0120
-Sprite0:	dc.w	0
-		dc.l	$01220000
-		dc.l $01240000,$01260000
-		dc.l $01280000,$012a0000
-		dc.l $012c0000,$012e0000
-		dc.l $01300000,$01320000
-		dc.l $01340000,$01360000
-		dc.l $01380000,$013a0000
-		dc.l $013c0000,$013e0000
-		dc.l $fffffffe		; koniec copperlisty
+Sprite00:	dc.w	0,$0122,0
+
+		dc.w	$0124
+Sprite01:	dc.w	0,$0126,0
+
+		dc.w	$0128		
+Sprite02:	dc.w	$0,$012a,0
+
+		dc.l	$012c0000,$012e0000
+		dc.l	$01300000,$01320000
+		dc.l	$01340000,$01360000
+		dc.l	$01380000,$013a0000
+		dc.l	$013c0000,$013e0000
+		dc.l	$fffffffe		; koniec copperlisty
 		
 Colors:		dc.w $0000,$0cde	; paleta kolorow
 
-Bitmap:		dcb.b	10240,0
+Bitmap:		incbin "pong.raw"
 
-Shape:		;incbin digits.bin
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111100001111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111100001111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-
-		dc.w %0000001100000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000011110000000
-		dc.w %0000001100000000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111100
-		dc.w %0000000001111100
-		dc.w %0000000000111100		
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000001111100
-		dc.w %0111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111000
-		dc.w %1111100000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111100000000000
-		dc.w %1111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111100
-		dc.w %0000000001111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000001111100
-		dc.w %0111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111100
-		dc.w %0000000001111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000001111100
-		dc.w %0111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-
-		dc.w %0110000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111100000000000
-		dc.w %1111111111000000
-		dc.w %1111111111100000
-		dc.w %1111111111100000
-		dc.w %0111111111100000
-		dc.w %0000001111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000111100000
-		dc.w %0000000011000000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111000
-		dc.w %1111100000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111100000000000
-		dc.w %1111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111100
-		dc.w %0000000001111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000001111100
-		dc.w %0111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111000
-		dc.w %1111100000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111000000000000
-		dc.w %1111100000000000
-		dc.w %1111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111100001111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111100001111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111100
-		dc.w %0000000001111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000011000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111100001111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111100001111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111100001111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111100001111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
-
-		dc.w %0111111111111000
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111100001111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111000000111100
-		dc.w %1111100001111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111100
-		dc.w %0000000001111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000000111100
-		dc.w %0000000001111100
-		dc.w %0111111111111100
-		dc.w %1111111111111100
-		dc.w %1111111111111100
-		dc.w %0111111111111000
+Shape:		incbin	"digits.bin"
 
 SpriteFake:	dc.l 0,0,0,0
 
 Paletka:	dc.w	0,0
-		dc.w %0111111111111110,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,$ffff
-		dc.w $ffff,%0111111111111110
+		dc.w %0111111111111110,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w %0111111111111110,$0
+		dc.l 0
+
+Paletka2:	dc.w 0,0
+		dc.w %0111111111111110,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w $ffff,$0
+		dc.w %0111111111111110,$0
+		dc.l 0
 
 ;jeśli chcesz żeby to był sprajt to muszą być najpierw dwa słowa albo jeden long 
 Pilka:		dc.l	0
-		dc.w %0000001111000000
-		dc.w %0000111111110000
-		dc.w %0001111111111000
-		dc.w %0011111111111100
-		dc.w %0111111111111110
-		dc.w %0111111111111110
-		dc.w %1111111111111111
-		dc.w %1111111111111111
-		dc.w %1111111111111111
-		dc.w %1111111111111111
-		dc.w %0111111111111110
-		dc.w %0111111111111110
-		dc.w %0011111111111100
-		dc.w %0001111111111000
-		dc.w %0000111111110000
-		dc.w %0000001111000000
+		dc.w %0000001111000000,$0
+		dc.w %0000111111110000,$0
+		dc.w %0001111111111000,$0
+		dc.w %0011111111111100,$0
+		dc.w %0111111111111110,$0
+		dc.w %0111111111111110,$0
+		dc.w %1111111111111111,$0
+		dc.w %1111111111111111,$0
+		dc.w %1111111111111111,$0
+		dc.w %1111111111111111,$0
+		dc.w %0111111111111110,$0
+		dc.w %0111111111111110,$0
+		dc.w %0011111111111100,$0
+		dc.w %0001111111111000,$0
+		dc.w %0000111111110000,$0
+		dc.w %0000001111000000,$0
+		dc.l 0
